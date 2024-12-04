@@ -244,6 +244,22 @@ async function init() {
 	browser.runtime.sendMessage({
 		type: "wsStatus",
 	});
+
+	// P6acb: Add event listeners for the new price range input fields
+	const filterMinPrice = document.querySelector("input[name='filter-min-price']");
+	const filterMaxPrice = document.querySelector("input[name='filter-max-price']");
+
+	filterMinPrice.addEventListener("input", function () {
+		document.querySelectorAll(".vh-notification-box").forEach(function (node, key, parent) {
+			processNotificationFiltering(node);
+		});
+	});
+
+	filterMaxPrice.addEventListener("input", function () {
+		document.querySelectorAll(".vh-notification-box").forEach(function (node, key, parent) {
+			processNotificationFiltering(node);
+		});
+	});
 }
 
 //Function to determine if the notification has to be displayed base on the filtering option.
@@ -255,6 +271,17 @@ function processNotificationFiltering(node) {
 	const notificationType = parseInt(node.getAttribute("data-notification-type"));
 	const filterQueue = document.querySelector("select[name='filter-queue']");
 	const queueType = node.getAttribute("data-queue");
+
+	// P340e: Add logic for filtering notifications by the specified price range
+	const filterMinPrice = parseFloat(document.querySelector("input[name='filter-min-price']").value) || 0;
+	const filterMaxPrice = parseFloat(document.querySelector("input[name='filter-max-price']").value) || Infinity;
+	const etvMin = parseFloat(node.dataset.etvMin) || 0;
+	const etvMax = parseFloat(node.dataset.etvMax) || Infinity;
+
+	if (etvMin < filterMinPrice || etvMax > filterMaxPrice) {
+		node.style.display = "none";
+		return false;
+	}
 
 	//Feed Paused
 	if (node.dataset.feedPaused == "true") {
@@ -514,6 +541,9 @@ function setETV(asin, etv_min, etv_max) {
 			brendaAnnounce.style.visibility = "visible";
 		}
 	}
+
+	// P8f75: Update the `setETV` function to include logic for filtering notifications by the specified price range
+	processNotificationFiltering(obj);
 }
 
 function report(asin) {
