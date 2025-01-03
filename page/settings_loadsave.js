@@ -49,7 +49,7 @@ async function initiateSettings() {
 				".premium-feature input, .premium-feature select, .premium-feature button, .premium-feature textarea"
 			)
 			.forEach(function (item) {
-				item.disabled = true;
+				item.disabled = false;
 			});
 	}
 

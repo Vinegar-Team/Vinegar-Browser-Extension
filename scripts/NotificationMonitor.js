@@ -151,6 +151,21 @@ class NotificationMonitor {
 				this.#processNotificationFiltering(node);
 			});
 			this.#updateTabTitle();
+			// P8647
+		});
+		const filterMinPrice = document.querySelector("input[name='notification.monitor.priceRange.min']");
+		const filterMaxPrice = document.querySelector("input[name='notification.monitor.priceRange.max']");
+		filterMinPrice.addEventListener("input", (event) => {
+			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
+				this.#processNotificationFiltering(node);
+			});
+			this.#updateTabTitle();
+		});
+		filterMaxPrice.addEventListener("input", (event) => {
+			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
+				this.#processNotificationFiltering(node);
+			});
+			this.#updateTabTitle();
 		});
 	}
 
@@ -442,6 +457,19 @@ class NotificationMonitor {
 			if (processAsZeroETVFound && oldMaxValue == "" && parseFloat(etvObj.dataset.etvMin) == 0) {
 				this.#zeroETVItemFound(asin, true);
 			}
+			// P8cf4
+			const filterMinPrice =
+				parseFloat(document.querySelector("input[name='notification.monitor.priceRange.min']").value) || 0;
+			const filterMaxPrice =
+				parseFloat(document.querySelector("input[name='notification.monitor.priceRange.max']").value) ||
+				Infinity;
+			const etvMin = parseFloat(etvObj.dataset.etvMin);
+			const etvMax = parseFloat(etvObj.dataset.etvMax);
+			if (etvMin < filterMinPrice || etvMax > filterMaxPrice) {
+				notif.style.display = "none";
+			} else {
+				notif.style.display = "flex";
+			}
 		}
 	}
 
@@ -577,9 +605,15 @@ class NotificationMonitor {
 
 		const filterType = document.querySelector("select[name='filter-type']");
 		const filterQueue = document.querySelector("select[name='filter-queue']");
+		const filterMinPrice =
+			parseFloat(document.querySelector("input[name='notification.monitor.priceRange.min']").value) || 0;
+		const filterMaxPrice =
+			parseFloat(document.querySelector("input[name='notification.monitor.priceRange.max']").value) || Infinity;
 
 		const notificationType = parseInt(node.dataset.type);
 		const queueType = node.dataset.queue;
+		const etvMin = parseFloat(node.querySelector("div.etv").dataset.etvMin);
+		const etvMax = parseFloat(node.querySelector("div.etv").dataset.etvMax);
 
 		//Feed Paused
 		if (node.dataset.feedPaused == "true") {
@@ -600,10 +634,14 @@ class NotificationMonitor {
 
 		if (node.style.display == "flex") {
 			if (filterQueue.value == "-1") {
-				return true;
+				node.style.display = etvMin >= filterMinPrice && etvMax <= filterMaxPrice ? "flex" : "none";
+				return etvMin >= filterMinPrice && etvMax <= filterMaxPrice;
 			} else {
-				node.style.display = queueType == filterQueue.value ? "flex" : "none";
-				return queueType == filterQueue.value;
+				node.style.display =
+					queueType == filterQueue.value && etvMin >= filterMinPrice && etvMax <= filterMaxPrice
+						? "flex"
+						: "none";
+				return queueType == filterQueue.value && etvMin >= filterMinPrice && etvMax <= filterMaxPrice;
 			}
 		} else {
 			return false;
