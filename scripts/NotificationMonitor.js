@@ -772,6 +772,7 @@ class NotificationMonitor {
 		const visibleChildrenCount = Array.from(children).filter(
 			(child) => window.getComputedStyle(child).display !== "none"
 		).length;
+
 		document.title = "VHNM (" + visibleChildrenCount + ")";
 	}
 }
