@@ -29,7 +29,9 @@ var brendaAnnounceQueue = new BrendaAnnounceQueue();
 import { ModalMgr } from "./ModalMgr.js";
 var DialogMgr = new ModalMgr();
 
-//const TYPE_SHOW_ALL = -1;
+// Track the old visible count
+let previousVisibleItemsCount = 0;
+
 const TYPE_REGULAR = 0;
 const TYPE_ZEROETV = 1;
 const TYPE_HIGHLIGHT = 2;
@@ -38,7 +40,7 @@ const TYPE_HIGHLIGHT_OR_ZEROETV = 9;
 class NotificationMonitor {
 	#feedPaused;
 	#feedPausedAmountStored;
-	#waitTimer; //Timer which wait a short delay to see if anything new is about to happen
+	#waitTimer; //Timer which waits a short delay to see if anything new is about to happen
 	#imageUrls;
 	#gridContainer = null;
 	async initialize() {
@@ -817,6 +819,15 @@ class NotificationMonitor {
 		const visibleChildrenCount = Array.from(children).filter(
 			(child) => window.getComputedStyle(child).display !== "none"
 		).length;
+
+		// --- Play a sound if visibleChildrenCount INCREASES ---
+		if (visibleChildrenCount > previousVisibleItemsCount) {
+			// Use any of the existing TYPEs as you like: TYPE_REGULAR, TYPE_HIGHLIGHT, or TYPE_ZEROETV
+			SoundPlayer.play(TYPE_HIGHLIGHT);
+		}
+		// Update the previous count
+		previousVisibleItemsCount = visibleChildrenCount;
+		// ------------------------------------------------------
 
 		document.title = "VHNM (" + visibleChildrenCount + ")";
 	}
