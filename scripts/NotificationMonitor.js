@@ -1,3 +1,5 @@
+// NotificationMonitor.js
+
 import { Logger } from "./Logger.js";
 var logger = new Logger();
 
@@ -29,9 +31,7 @@ var brendaAnnounceQueue = new BrendaAnnounceQueue();
 import { ModalMgr } from "./ModalMgr.js";
 var DialogMgr = new ModalMgr();
 
-// Track the old visible count
-let previousVisibleItemsCount = 0;
-
+//const TYPE_SHOW_ALL = -1;
 const TYPE_REGULAR = 0;
 const TYPE_ZEROETV = 1;
 const TYPE_HIGHLIGHT = 2;
@@ -40,9 +40,10 @@ const TYPE_HIGHLIGHT_OR_ZEROETV = 9;
 class NotificationMonitor {
 	#feedPaused;
 	#feedPausedAmountStored;
-	#waitTimer; //Timer which waits a short delay to see if anything new is about to happen
+	#waitTimer; //Timer which wait a short delay to see if anything new is about to happen
 	#imageUrls;
 	#gridContainer = null;
+
 	async initialize() {
 		this.#imageUrls = new Set();
 		this.#feedPausedAmountStored = 0;
@@ -140,7 +141,6 @@ class NotificationMonitor {
 		//Bind the event when changing the filter
 		const filterType = document.querySelector("select[name='filter-type']");
 		filterType.addEventListener("change", (event) => {
-			//Display a specific type of notifications only
 			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
 				this.#processNotificationFiltering(node);
 			});
@@ -148,23 +148,21 @@ class NotificationMonitor {
 		});
 		const filterQueue = document.querySelector("select[name='filter-queue']");
 		filterQueue.addEventListener("change", (event) => {
-			//Display a specific type of notifications only
 			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
 				this.#processNotificationFiltering(node);
 			});
 			this.#updateTabTitle();
-			// P8647
 		});
 		const filterMinPrice = document.querySelector("input[name='notification.monitor.priceRange.min']");
 		const filterMaxPrice = document.querySelector("input[name='notification.monitor.priceRange.max']");
 		filterMinPrice.addEventListener("input", (event) => {
-			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
+			document.querySelectorAll(".vvp-item-tile").forEach((node) => {
 				this.#processNotificationFiltering(node);
 			});
 			this.#updateTabTitle();
 		});
 		filterMaxPrice.addEventListener("input", (event) => {
-			document.querySelectorAll(".vvp-item-tile").forEach((node, key, parent) => {
+			document.querySelectorAll(".vvp-item-tile").forEach((node) => {
 				this.#processNotificationFiltering(node);
 			});
 			this.#updateTabTitle();
@@ -173,7 +171,6 @@ class NotificationMonitor {
 
 	async disableItem(asin) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
@@ -192,6 +189,7 @@ class NotificationMonitor {
 		notif.style.opacity = "0.5";
 		notif.style.filter = "brightness(0.7)";
 	}
+
 	async addTileInGrid(
 		asin,
 		queue,
@@ -213,25 +211,23 @@ class NotificationMonitor {
 			return false;
 		}
 
-		//If the notification already exist, ignore this request.
+		//If the notification already exists, remove it so we can add it fresh.
 		const element = document.getElementById("vh-notification-" + asin);
 		if (element) {
-			element.remove(); //Better to remove an element an insert it new than skip it.
-			//For example, if the item is unavailable, we want to remove the flagged item and insert a new one.
+			element.remove();
 		}
 
-		//Check if the de-duplicate image setting is on, if so, do not add items
-		//for which an item with the same thumbnail already exist.
+		//Check if the de-duplicate image setting is on
 		if (Settings.get("notification.monitor.hideDuplicateThumbnail")) {
 			if (this.#imageUrls.has(img_url)) {
-				return false; //The image already exist, do not add the item
+				return false;
 			} else {
 				this.#imageUrls.add(img_url);
 			}
 		}
 
-		const recommendationType = getRecommendationTypeFromQueue(queue); //grid.js
-		const recommendationId = generateRecommendationString(recommendationType, asin, enrollment_guid); //grid.js
+		const recommendationType = getRecommendationTypeFromQueue(queue);
+		const recommendationId = generateRecommendationString(recommendationType, asin, enrollment_guid);
 
 		//Add the notification
 		let templateFile;
@@ -271,111 +267,100 @@ class NotificationMonitor {
 		adjustTitleSpacing(tileDOM);
 		adjustFontSize(tileDOM);
 
-		//If the feed is paused, up the counter and rename the Resume button
+		//If the feed is paused, up the counter
 		if (this.#feedPaused) {
 			this.#feedPausedAmountStored++;
 			document.getElementById("pauseFeed").value = `Resume Feed (${this.#feedPausedAmountStored})`;
 		}
 
-		//If we received ETV data (ie: Fetch last 100), process them
+		//Set ETV if known
 		if (etv_min != null && etv_max != null) {
-			//Set the ETV but take no action on it
-			this.setETV(asin, etv_min, false); //Don't process potential 0etv, just set the ETV
-			this.setETV(asin, etv_max, false); //Don't process potential 0etv, just set the ETV
-
-			//We found a zero ETV item, but we don't want to play a sound just yet
-			if (parseFloat(etv_min) == 0) {
-				this.#zeroETVItemFound(asin, false); //Ok now process 0etv, but no sound
+			this.setETV(asin, etv_min, false);
+			this.setETV(asin, etv_max, false);
+			if (parseFloat(etv_min) === 0) {
+				this.#zeroETVItemFound(asin, false);
 			}
 		} else {
-			//The ETV is not known
+			//No ETV
 			const brendaAnnounce = tileDOM.querySelector("#vh-announce-link-" + asin);
 			if (brendaAnnounce) {
 				brendaAnnounce.style.visibility = "hidden";
 			}
 		}
 
-		//Process the item according to the notification type (highlight > 0etv > regular)
-		//This is what determine & trigger what sound effect to play
+		//Process item type
 		if (KWsMatch) {
-			this.#highlightedItemFound(asin, true); //Play the highlight sound
-		} else if (parseFloat(etv_min) == 0) {
-			this.#zeroETVItemFound(asin, true); //Play the zeroETV sound
+			this.#highlightedItemFound(asin, true);
+		} else if (parseFloat(etv_min) === 0) {
+			this.#zeroETVItemFound(asin, true);
 		} else {
-			this.#regularItemFound(asin, true); //Play the regular sound
+			this.#regularItemFound(asin, true);
 		}
 
-		//Process the bluring
+		//Blur
 		if (BlurKWsMatch) {
 			this.#blurItemFound(asin);
 		}
 
-		//If unavailable, change opacity
-		if (unavailable == 1) {
+		//If unavailable
+		if (unavailable === 1) {
 			this.disableItem(asin);
 		}
 
-		//Update the most recent date
 		document.getElementById("date_most_recent_item").innerText = this.#formatDate(date);
 
 		//Apply the filters
 		this.#processNotificationFiltering(tileDOM);
 
-		//Update the tab title:
-		//User a timer to avoid the Fetch Last 100 to call this 100 times, which slow things down.
+		//Update the tab title (throttled w/ 250ms)
 		window.clearTimeout(this.#waitTimer);
 		this.#waitTimer = window.setTimeout(() => {
 			this.#updateTabTitle();
 		}, 250);
 
-		// Add new click listener for the report button
+		//Add click listeners
 		document.querySelector("#vh-report-link-" + asin).addEventListener("click", this.#handleReportClick);
 
-		//Add new click listener for Brenda announce:
 		if (Settings.get("discord.active") && Settings.get("discord.guid", false) != null) {
 			const announce = document.querySelector("#vh-announce-link-" + asin);
 			announce.addEventListener("click", this.#handleBrendaClick);
 		}
 
-		//Add new click listener for the pinned button
 		if (Settings.get("pinnedTab.active")) {
 			const pinIcon = document.querySelector("#vh-pin-link-" + asin);
 			pinIcon.addEventListener("click", this.#handlePinClick);
 		}
 
-		//Add new click listener for the hide button
 		const hideIcon = document.querySelector("#vh-hide-link-" + asin);
 		hideIcon.addEventListener("click", this.#handleHideClick);
 
-		//Add new click listener for the technical details button
 		const detailsIcon = document.querySelector("#vh-reason-link-" + asin);
 		detailsIcon.addEventListener("click", this.#handleDetailsClick);
 
-		//Add the click listener for the See Details button
-		if (Settings.get("notification.monitor.openLinksInNewTab") == "1") {
-			//Deactivate Vine click handling
+		//Open links in new tab if user prefers
+		if (Settings.get("notification.monitor.openLinksInNewTab") === "1") {
 			const btnContainer = document.querySelector(`#vh-notification-${asin} .vvp-details-btn`);
 			btnContainer.classList.remove("vvp-details-btn");
 
-			//Bind the button's click
 			const seeDetailsBtn = document.querySelector(`#vh-notification-${asin} .a-button-primary input`);
 			seeDetailsBtn.addEventListener("click", () => {
 				window.open(
-					`https://www.amazon.${i13n.getDomainTLD()}/vine/vine-items?queue=encore#openModal;${asin};${queue};${is_parent_asin ? "true" : "false"};${enrollment_guid}`,
+					`https://www.amazon.${i13n.getDomainTLD()}/vine/vine-items?queue=encore#openModal;${asin};${queue};${
+						is_parent_asin ? "true" : "false"
+					};${enrollment_guid}`,
 					"_blank"
 				);
 			});
 		}
 
-		//Autotruncate the items if there are too many
+		//Autotruncate
 		this.#autoTruncate();
 
-		return tileDOM; //Return the DOM element for the tile.
+		return tileDOM;
 	}
 
 	async setETV(asin, etv, processAsZeroETVFound = true) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
@@ -384,18 +369,15 @@ class NotificationMonitor {
 		const etvTxt = etvObj.querySelector("span.etv");
 		const brendaAnnounce = notif.querySelector("#vh-announce-link-" + asin);
 
-		//Update the ETV value in the hidden fields
-		let oldMaxValue = etvObj.dataset.etvMax; //Used to determine if a new 0ETV was found
-		if (etvObj.dataset.etvMin == "" || etv < etvObj.dataset.etvMin) {
+		let oldMaxValue = etvObj.dataset.etvMax;
+		if (etvObj.dataset.etvMin === "" || etv < etvObj.dataset.etvMin) {
 			etvObj.dataset.etvMin = etv;
 		}
-
-		if (etvObj.dataset.etvMax == "" || etv > etvObj.dataset.etvMax) {
+		if (etvObj.dataset.etvMax === "" || etv > etvObj.dataset.etvMax) {
 			etvObj.dataset.etvMax = etv;
 		}
 
-		//Display for formatted ETV in the toolbar
-		if (etvObj.dataset.etvMin != "" && etvObj.dataset.etvMax != "") {
+		if (etvObj.dataset.etvMin !== "" && etvObj.dataset.etvMax !== "") {
 			etvObj.style.visibility = "visible";
 			if (etvObj.dataset.etvMin == etvObj.dataset.etvMax) {
 				etvTxt.innerText = this.#formatETV(etvObj.dataset.etvMin);
@@ -405,39 +387,29 @@ class NotificationMonitor {
 			}
 		}
 
-		//If Brenda is enabled, toggle the button display according to wether the ETV is known.
 		if (brendaAnnounce) {
-			if (etvObj.dataset.etvMin == "") {
+			if (etvObj.dataset.etvMin === "") {
 				brendaAnnounce.style.visibility = "hidden";
 			} else {
 				brendaAnnounce.style.visibility = "visible";
 			}
 		}
 
-		//If a new ETV came in, we want to check if the item now match a keywords with an ETV condition.
-		//Check if the item is highlighted
-		//If the item is already highlighted, we don't need to check if we need to highlight it or hide it.
-		//Skip the 0 ETV processing too.
+		//Check if we need to highlight or hide it (keywords)
 		let skip0ETV = notif.dataset.type == TYPE_HIGHLIGHT;
 		if (!skip0ETV && processAsZeroETVFound) {
-			//No need to re-highlight if the item is already highlighted.
-			//We don't want to highlight an item that is getting its ETV set initially (processAsZeroETVFound==false) before another pass of highlighting will be done shortly after.
-			const title = notif.querySelector(".a-truncate-full").innerText;
+			const title = notif.querySelector(".a-truncate-full")?.innerText || "";
 			if (title) {
-				//Check if we need to highlight the item
 				const val = await keywordMatch(
 					Settings.get("general.highlightKeywords"),
 					title,
 					etvObj.dataset.etvMin,
 					etvObj.dataset.etvMax
 				);
-
 				if (val !== false) {
-					//We got a keyword match, highlight the item
 					skip0ETV = true;
 					this.#highlightedItemFound(asin, true);
 				} else {
-					//Check if we need to hide the item
 					const val2 = await keywordMatch(
 						Settings.get("general.hideKeywords"),
 						title,
@@ -445,29 +417,41 @@ class NotificationMonitor {
 						etvObj.dataset.etvMax
 					);
 					if (val2 !== false) {
-						//Remove (permanently "hide") the tile
 						notif.remove();
-						this.#updateTabTitle(); //Update the tab counter
+						this.#updateTabTitle();
 						skip0ETV = true;
 					}
 				}
 			}
 		}
 
-		//Check if the item is a 0ETV
-		if (skip0ETV === false) {
-			if (processAsZeroETVFound && oldMaxValue == "" && parseFloat(etvObj.dataset.etvMin) == 0) {
+		//Check if item is 0ETV
+		if (!skip0ETV) {
+			if (processAsZeroETVFound && oldMaxValue === "" && parseFloat(etvObj.dataset.etvMin) === 0) {
 				this.#zeroETVItemFound(asin, true);
 			}
-			// P8cf4
+
+			// Price filter logic
+			// If there's any user-set price in the input fields, hide noETV items.
 			const filterMinPrice =
 				parseFloat(document.querySelector("input[name='notification.monitor.priceRange.min']").value) || 0;
 			const filterMaxPrice =
 				parseFloat(document.querySelector("input[name='notification.monitor.priceRange.max']").value) ||
 				Infinity;
+
+			// Check if either filter is truly set by user
+			const minInputValue = document.querySelector("input[name='notification.monitor.priceRange.min']").value;
+			const maxInputValue = document.querySelector("input[name='notification.monitor.priceRange.max']").value;
+			const userHasPriceFilter = !!minInputValue || !!maxInputValue;
+
 			const etvMin = parseFloat(etvObj.dataset.etvMin);
 			const etvMax = parseFloat(etvObj.dataset.etvMax);
-			if (etvMin < filterMinPrice || etvMax > filterMaxPrice) {
+			const hasETV = !isNaN(etvMin) && !isNaN(etvMax);
+
+			if (!hasETV) {
+				// If user typed any filter number, hide noETV items
+				notif.style.display = userHasPriceFilter ? "none" : "flex";
+			} else if (etvMin < filterMinPrice || etvMax > filterMaxPrice) {
 				notif.style.display = "none";
 			} else {
 				notif.style.display = "flex";
@@ -500,7 +484,7 @@ class NotificationMonitor {
 		} else if (i13n.getDomainTLD() === null) {
 			this.#setServiceWorkerStatus(
 				false,
-				"No valid country found. You current country is detected as: '" +
+				"No valid country found. Your current country is detected as: '" +
 					i13n.getCountryCode() +
 					"', which is not currently supported by Vine Helper. Reach out so we can add it!"
 			);
@@ -526,76 +510,49 @@ class NotificationMonitor {
 
 	#zeroETVItemFound(asin, playSoundEffect = true) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
-
-		//Play the zero ETV sound effect
 		if (playSoundEffect) {
 			SoundPlayer.play(TYPE_ZEROETV);
-
-			//Kind of sketch, but if the sound effect is on, we know the type was determined.
 			notif.dataset.type = TYPE_ZEROETV;
 		}
-
-		//Highlight for ETV
 		notif.style.backgroundColor = Settings.get("notification.monitor.zeroETV.color");
-		if (notif.getAttribute("data-notification-type") != TYPE_HIGHLIGHT) {
+		if (notif.getAttribute("data-notification-type") !== TYPE_HIGHLIGHT) {
 			notif.setAttribute("data-notification-type", TYPE_ZEROETV);
 		}
-
-		//Move the notification to the top
 		this.#moveNotifToTop(notif);
 	}
 
 	#highlightedItemFound(asin, playSoundEffect = true) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
-
-		//Play the highlight sound effect
 		if (playSoundEffect) {
 			SoundPlayer.play(TYPE_HIGHLIGHT);
-
-			//Kind of sketch, but if the sound effect is on, we know the type was determined.
-			//notif.dataset.type = TYPE_HIGHLIGHT;
 		}
-
-		//Highlight for Highlighted item
 		notif.dataset.type = TYPE_HIGHLIGHT;
 		notif.style.backgroundColor = Settings.get("notification.monitor.highlight.color");
-
-		//Move the notification to the top
 		this.#moveNotifToTop(notif);
 	}
 
 	#regularItemFound(asin, playSoundEffect = true) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
-
-		//Play the regular notification sound effect.
 		if (playSoundEffect) {
 			SoundPlayer.play(TYPE_REGULAR);
-
-			//Kind of sketch, but if the sound effect is on, we know the type was determined.
 			notif.dataset.type = TYPE_REGULAR;
 		}
 	}
 
 	#blurItemFound(asin) {
 		const notif = this.#getNotificationByASIN(asin);
-
 		if (!notif) {
 			return false;
 		}
-
-		//Blur the thumbnail and title
 		notif.querySelector(".vh-img-container>img")?.classList.add("blur");
 		notif.querySelector(".vvp-item-product-title-container>a")?.classList.add("dynamic-blur");
 	}
@@ -604,7 +561,6 @@ class NotificationMonitor {
 		if (!node) {
 			return false;
 		}
-
 		const filterType = document.querySelector("select[name='filter-type']");
 		const filterQueue = document.querySelector("select[name='filter-queue']");
 		const filterMinPrice =
@@ -612,42 +568,54 @@ class NotificationMonitor {
 		const filterMaxPrice =
 			parseFloat(document.querySelector("input[name='notification.monitor.priceRange.max']").value) || Infinity;
 
+		const minInputValue = document.querySelector("input[name='notification.monitor.priceRange.min']").value;
+		const maxInputValue = document.querySelector("input[name='notification.monitor.priceRange.max']").value;
+		const userHasPriceFilter = !!minInputValue || !!maxInputValue;
+
 		const notificationType = parseInt(node.dataset.type);
 		const queueType = node.dataset.queue;
-		const etvMin = parseFloat(node.querySelector("div.etv").dataset.etvMin);
-		const etvMax = parseFloat(node.querySelector("div.etv").dataset.etvMax);
 
-		//Feed Paused
-		if (node.dataset.feedPaused == "true") {
+		const etvDiv = node.querySelector("div.etv");
+		const etvMin = parseFloat(etvDiv.dataset.etvMin);
+		const etvMax = parseFloat(etvDiv.dataset.etvMax);
+		const hasETV = !isNaN(etvMin) && !isNaN(etvMax);
+
+		// Feed paused
+		if (node.dataset.feedPaused === "true") {
 			node.style.display = "none";
 			return false;
 		}
 
+		// 1. Filter by notification type
 		if (filterType.value == -1) {
 			node.style.display = "flex";
 		} else if (filterType.value == TYPE_HIGHLIGHT_OR_ZEROETV) {
 			const typesToShow = [TYPE_HIGHLIGHT, TYPE_ZEROETV];
 			node.style.display = typesToShow.includes(notificationType) ? "flex" : "none";
-			typesToShow.includes(notificationType);
 		} else {
 			node.style.display = notificationType == filterType.value ? "flex" : "none";
-			notificationType == filterType.value;
 		}
 
-		if (node.style.display == "flex") {
-			if (filterQueue.value == "-1") {
-				node.style.display = etvMin >= filterMinPrice && etvMax <= filterMaxPrice ? "flex" : "none";
-				return etvMin >= filterMinPrice && etvMax <= filterMaxPrice;
-			} else {
-				node.style.display =
-					queueType == filterQueue.value && etvMin >= filterMinPrice && etvMax <= filterMaxPrice
-						? "flex"
-						: "none";
-				return queueType == filterQueue.value && etvMin >= filterMinPrice && etvMax <= filterMaxPrice;
+		if (node.style.display === "flex") {
+			// 2. Filter by queue
+			if (filterQueue.value !== "-1" && queueType !== filterQueue.value) {
+				node.style.display = "none";
+				return false;
 			}
-		} else {
-			return false;
+
+			// 3. Filter by price range
+			if (userHasPriceFilter) {
+				// If user typed a min/max, hide noETV items
+				if (!hasETV) {
+					node.style.display = "none";
+					return false;
+				} else if (etvMin < filterMinPrice || etvMax > filterMaxPrice) {
+					node.style.display = "none";
+					return false;
+				}
+			}
 		}
+		return node.style.display === "flex";
 	}
 
 	//############################################################
@@ -655,26 +623,20 @@ class NotificationMonitor {
 
 	#handleHideClick(e) {
 		e.preventDefault();
-
 		const asin = e.target.dataset.asin;
-
 		document.querySelector("#vh-notification-" + asin).remove();
 	}
 
 	#handleBrendaClick(e) {
 		e.preventDefault();
-
 		const asin = e.target.dataset.asin;
 		const queue = e.target.dataset.queue;
-
-		let etv = document.querySelector("#vh-notification-" + asin + " .etv").dataset.etvMax;
-
+		let etv = document.querySelector("#vh-notification-" + asin + " .etv")?.dataset.etvMax;
 		brendaAnnounceQueue.announce(asin, etv, queue, i13n.getDomainTLD());
 	}
 
 	#handlePinClick(e) {
 		e.preventDefault();
-
 		const asin = e.target.dataset.asin;
 		const isParentAsin = e.target.dataset.isParentAsin;
 		const enrollmentGUID = e.target.dataset.enrollmentGuid;
@@ -683,8 +645,6 @@ class NotificationMonitor {
 		const thumbnail = e.target.dataset.thumbnail;
 
 		PinnedList.addItem(asin, queue, title, thumbnail, isParentAsin, enrollmentGUID);
-
-		//Display notification
 		Notifications.pushNotification(
 			new ScreenNotification({
 				title: `Item ${asin} pinned.`,
@@ -696,7 +656,6 @@ class NotificationMonitor {
 
 	#handleDetailsClick(e) {
 		e.preventDefault();
-
 		const asin = e.target.dataset.asin;
 		const date = e.target.dataset.date;
 		const reason = e.target.dataset.reason;
@@ -723,7 +682,7 @@ class NotificationMonitor {
 	}
 
 	#handleReportClick(e) {
-		e.preventDefault(); // Prevent the default click behavior
+		e.preventDefault();
 		const asin = e.target.dataset.asin;
 
 		let val = prompt(
@@ -734,14 +693,13 @@ class NotificationMonitor {
 				"Note: False reporting may get you banned.\n\n" +
 				"type REPORT in the field below to send a report:"
 		);
-		if (val !== null && val.toLowerCase() == "report") {
+		if (val !== null && val.toLowerCase() === "report") {
 			this.#send_report(asin);
 		}
 	}
 
 	#send_report(asin) {
 		let manifest = chrome.runtime.getManifest();
-
 		const content = {
 			api_version: 5,
 			app_version: manifest.version,
@@ -755,10 +713,8 @@ class NotificationMonitor {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(content),
 		};
-
 		showRuntime("Sending report...");
 
-		//Send the report to VH's server
 		fetch(VINE_HELPER_API_V5_URL, options).then(function () {
 			alert("Report sent. Thank you.");
 		});
@@ -799,36 +755,23 @@ class NotificationMonitor {
 	}
 
 	#autoTruncate(max = 2000) {
-		//Auto truncate
-		if (document.getElementById("auto-truncate").checked) {
+		if (document.getElementById("auto-truncate")?.checked) {
 			const itemsD = document.getElementsByClassName("vvp-item-tile");
 			const itemsCount = itemsD.length;
 			if (itemsCount > max) {
-				for (let i = itemsCount - 1; i >= 2000; i--) {
-					itemsD[i].remove(); //remove the element from the DOM
-					console.log("Truncating " + asin);
+				for (let i = itemsCount - 1; i >= max; i--) {
+					itemsD[i].remove();
+					console.log("Truncating item beyond max limit.");
 				}
 			}
 		}
 	}
-	#updateTabTitle() {
-		// Select all child elements of #vvp-items-grid
-		const children = document.querySelectorAll("#vvp-items-grid > *");
 
-		// Filter and count elements that are not display: none
+	#updateTabTitle() {
+		const children = document.querySelectorAll("#vvp-items-grid > *");
 		const visibleChildrenCount = Array.from(children).filter(
 			(child) => window.getComputedStyle(child).display !== "none"
 		).length;
-
-		// --- Play a sound if visibleChildrenCount INCREASES ---
-		if (visibleChildrenCount > previousVisibleItemsCount) {
-			// Use any of the existing TYPEs as you like: TYPE_REGULAR, TYPE_HIGHLIGHT, or TYPE_ZEROETV
-			SoundPlayer.play(TYPE_HIGHLIGHT);
-		}
-		// Update the previous count
-		previousVisibleItemsCount = visibleChildrenCount;
-		// ------------------------------------------------------
-
 		document.title = "VHNM (" + visibleChildrenCount + ")";
 	}
 }
